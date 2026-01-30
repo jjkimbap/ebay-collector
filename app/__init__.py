@@ -1,0 +1,3 @@
+"""
+eBay Price Collector Application.
+"""
