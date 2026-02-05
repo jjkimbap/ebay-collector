@@ -4,30 +4,15 @@ uvicorn[standard]==0.27.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
 
-# Database
-sqlalchemy==2.0.25
-asyncpg==0.29.0
-alembic==1.13.1
-
 # HTTP & Scraping
 httpx==0.26.0
 aiohttp==3.9.1
 beautifulsoup4==4.12.3
 lxml==5.1.0
-playwright==1.41.0
-
-# Redis (Caching & Rate Limiting)
-redis==5.0.1
 
 # Utilities
 python-dotenv==1.0.0
 tenacity==8.2.3
-forex-python==1.8
-
-# Testing
-pytest==7.4.4
-pytest-asyncio==0.23.3
-httpx==0.26.0
 
 # Logging & Monitoring
 structlog==24.1.0

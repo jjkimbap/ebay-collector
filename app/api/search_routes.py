@@ -1,281 +1,219 @@
 """
-검색 기반 가격 수집 API 라우트
-
-브랜드명이나 키워드로 eBay 상품을 검색하고 가격 정보를 수집합니다.
+eBay 상품 검색 API
 """
-from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
+import httpx
 import structlog
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.collectors.ebay.search_collector import (
-    EbaySearchCollector,
-    SearchResult,
-    create_mock_search_result,
-)
-from app.core.config import get_settings
-from app.core.database import get_db
+from fastapi import APIRouter, Query
+from pydantic import BaseModel, ConfigDict
 
 logger = structlog.get_logger()
-settings = get_settings()
 
 router = APIRouter(prefix="/api/v1/search", tags=["search"])
 
 
-# ==================== Request/Response Models ====================
-
-class SearchRequest(BaseModel):
-    """검색 요청 모델"""
-    query: str = Field(..., min_length=1, max_length=200, description="검색 키워드 (예: '3ce', '3ce lipstick')")
-    category: Optional[str] = Field(None, description="카테고리 (예: 'makeup', 'skincare', 'electronics')")
-    min_price: Optional[Decimal] = Field(None, ge=0, description="최소 가격 (USD)")
-    max_price: Optional[Decimal] = Field(None, ge=0, description="최대 가격 (USD)")
-    condition: Optional[str] = Field(None, description="상품 상태: new, used, refurbished")
-    sort: str = Field("best_match", description="정렬: price, price_desc, date, best_match")
-    limit: int = Field(50, ge=1, le=200, description="결과 수 (최대 200)")
-    page: int = Field(1, ge=1, description="페이지 번호")
-    
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "query": "3ce",
-                    "limit": 50
-                },
-                {
-                    "query": "3ce lipstick",
-                    "category": "makeup",
-                    "max_price": 30.00,
-                    "sort": "price",
-                    "limit": 100
-                }
-            ]
-        }
-    }
-
-
 class SearchItemResponse(BaseModel):
     """검색 결과 개별 아이템"""
-    item_id: str
-    title: str
-    price: float
-    currency: str
-    shipping_fee: float
-    total_price: float
-    condition: str
-    listing_type: str
-    seller_name: Optional[str]
-    image_url: Optional[str]
-    item_url: Optional[str]
-    bid_count: Optional[int]
-
-
-class PriceStats(BaseModel):
-    """가격 통계"""
-    min_price: float
-    max_price: float
-    avg_price: float
-    item_count: int
+    model_config = ConfigDict(extra="allow")  # 추가 필드 허용
+    
+    itemId: Optional[str] = None
+    title: Optional[str] = None
+    price: Optional[dict[str, Any]] = None
+    condition: Optional[str] = None
+    image: Optional[dict[str, Any]] = None
+    itemWebUrl: Optional[str] = None
 
 
 class SearchResponse(BaseModel):
     """검색 응답 모델"""
     success: bool
-    query: str
-    total_count: int
-    items: list[SearchItemResponse]
-    price_stats: Optional[PriceStats]
-    page: int
-    page_size: int
-    has_more: bool
-    search_url: Optional[str]
-    collection_method: str
+    total: Optional[int] = None
+    itemSummaries: Optional[list[SearchItemResponse]] = None
     error: Optional[str] = None
 
 
-# ==================== API Endpoints ====================
-
-@router.post("", response_model=SearchResponse)
-async def search_products(request: SearchRequest):
-    """
-    eBay 상품 검색
-    
-    브랜드명이나 키워드로 상품을 검색하고 가격 정보를 수집합니다.
-    
-    **사용 예시:**
-    - 브랜드 검색: `{"query": "3ce"}`
-    - 상세 검색: `{"query": "3ce lipstick", "category": "makeup", "max_price": 30}`
-    - 가격순 정렬: `{"query": "3ce", "sort": "price"}`
-    
-    **참고:** eBay API 키가 설정되어 있어야 합니다.
-    """
-    logger.info("Search request", query=request.query, category=request.category)
-    
-    # API 키 체크
-    if not settings.ebay_api_configured:
-        # API 키가 없으면 모의 데이터 반환 (개발/테스트용)
-        logger.warning("eBay API not configured, returning mock data")
-        mock_result = create_mock_search_result(request.query)
-        return _convert_to_response(mock_result, is_mock=True)
-    
-    # 실제 검색 수행
-    collector = EbaySearchCollector()
-    try:
-        result = await collector.search(
-            query=request.query,
-            category=request.category,
-            min_price=request.min_price,
-            max_price=request.max_price,
-            condition=request.condition,
-            sort=request.sort,
-            limit=request.limit,
-            page=request.page,
-        )
-        
-        return _convert_to_response(result)
-        
-    finally:
-        await collector.close()
-
-
-@router.get("/brand/{brand_name}", response_model=SearchResponse)
-async def search_by_brand(
-    brand_name: str,
-    category: Optional[str] = Query(None, description="카테고리 필터"),
-    limit: int = Query(50, ge=1, le=200, description="결과 수"),
+@router.get("", response_model=SearchResponse)
+async def search_products(
+    q: str = Query(..., description="검색 키워드 (예: 'drone', '3ce', 'iphone')"),
+    limit: int = Query(3, ge=1, le=200, description="결과 수 (최대 200)"),
 ):
     """
-    브랜드명으로 검색
+    eBay 상품 검색 API
+    
+    eBay Browse API의 search 엔드포인트를 직접 호출합니다.
+    OAuth 2.0 토큰을 사용하여 인증합니다.
+    
+    **엔드포인트:**
+    `https://api.ebay.com/buy/browse/v1/item_summary/search`
     
     **사용 예시:**
-    - GET /api/v1/search/brand/3ce
-    - GET /api/v1/search/brand/MAC?category=makeup&limit=100
+    - GET /api/v1/search?q=drone&limit=3
+    - GET /api/v1/search?q=iphone&limit=10
+    
+    **응답:**
+    eBay API의 원본 응답을 그대로 반환합니다.
     """
-    logger.info("Brand search", brand=brand_name, category=category)
+    from pathlib import Path
     
-    if not settings.ebay_api_configured:
-        mock_result = create_mock_search_result(brand_name)
-        return _convert_to_response(mock_result, is_mock=True)
+    logger.info("Search request", query=q, limit=limit)
     
-    collector = EbaySearchCollector()
-    try:
-        result = await collector.search_brand(
-            brand=brand_name,
-            category=category,
-            limit=limit,
+    # Read OAuth token from file
+    # Path: project_root/token
+    # Expected: C:\Users\cknb\Desktop\cursor\ebay-price-collector\token
+    token_file = Path(__file__).parent.parent.parent / "token"
+    
+    logger.debug("Token file path", path=str(token_file.resolve()))
+    
+    if not token_file.exists():
+        logger.error("Token file not found", path=str(token_file.resolve()))
+        return SearchResponse(
+            success=False,
+            error=f"Token file not found: {token_file.resolve()}"
         )
-        return _convert_to_response(result)
-    finally:
-        await collector.close()
-
-
-@router.get("/categories")
-async def get_supported_categories():
-    """
-    지원되는 카테고리 목록 조회
     
-    검색 시 category 파라미터에 사용할 수 있는 값들입니다.
-    """
-    return {
-        "categories": {
-            "makeup": {"id": "31786", "name": "Makeup"},
-            "cosmetics": {"id": "31786", "name": "Cosmetics"},
-            "beauty": {"id": "26395", "name": "Beauty"},
-            "skincare": {"id": "11863", "name": "Skincare"},
-            "electronics": {"id": "293", "name": "Electronics"},
-            "phones": {"id": "9355", "name": "Cell Phones"},
-            "computers": {"id": "58058", "name": "Computers"},
-            "clothing": {"id": "11450", "name": "Clothing"},
-            "shoes": {"id": "93427", "name": "Shoes"},
-        },
-        "note": "You can also use eBay category ID directly"
+    try:
+        # Read token file - try multiple encodings
+        raw_content = None
+        for encoding in ["utf-8", "utf-8-sig", "latin-1"]:
+            try:
+                raw_content = token_file.read_text(encoding=encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        
+        if raw_content is None:
+            # Fallback to bytes
+            raw_content = token_file.read_bytes().decode("utf-8", errors="ignore")
+        
+        logger.info("Token file read", content_length=len(raw_content), first_chars=raw_content[:50] if raw_content else None)
+        
+        # Strip whitespace and newlines
+        token = raw_content.strip().strip('"').strip("'")
+        
+        # Remove any trailing newlines or carriage returns
+        token = token.replace("\r", "").replace("\n", "").strip()
+        
+        if not token:
+            logger.error(
+                "Token file is empty",
+                path=str(token_file.resolve()),
+                file_size=token_file.stat().st_size if token_file.exists() else 0,
+                raw_content_length=len(raw_content)
+            )
+            return SearchResponse(
+                success=False,
+                error=f"Token file is empty (file size: {token_file.stat().st_size if token_file.exists() else 0} bytes)"
+            )
+        
+        # Validate token format (eBay tokens typically start with 'v^')
+        if not token.startswith("v^"):
+            logger.warning("Token format may be invalid", token_prefix=token[:30])
+        
+        logger.info("Token loaded successfully", token_length=len(token), token_prefix=token[:30] + "..." if len(token) > 30 else token)
+    except FileNotFoundError:
+        logger.error("Token file not found", path=str(token_file.resolve()))
+        return SearchResponse(
+            success=False,
+            error=f"Token file not found: {token_file.resolve()}"
+        )
+    except Exception as e:
+        logger.error("Failed to read token file", error=str(e), exc_info=True)
+        return SearchResponse(
+            success=False,
+            error=f"Failed to read token file: {str(e)}"
+        )
+    
+    # eBay API endpoint
+    api_url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+    
+    # Prepare request
+    params = {
+        "q": q,
+        "limit": limit,
     }
-
-
-@router.post("/bulk", response_model=SearchResponse)
-async def bulk_search(
-    request: SearchRequest,
-    max_items: int = Query(500, ge=1, le=1000, description="최대 수집 아이템 수"),
-):
-    """
-    대량 검색 (여러 페이지 자동 수집)
     
-    여러 페이지에 걸쳐 최대 max_items 개까지 상품을 수집합니다.
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
+        "X-EBAY-C-ENDUSERCTX": "affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>",
+        "Content-Type": "application/json",
+    }
     
-    **주의:** 많은 API 호출이 발생할 수 있으므로 rate limit에 주의하세요.
-    """
-    logger.info("Bulk search", query=request.query, max_items=max_items)
-    
-    if not settings.ebay_api_configured:
-        mock_result = create_mock_search_result(request.query)
-        return _convert_to_response(mock_result, is_mock=True)
-    
-    collector = EbaySearchCollector()
-    try:
-        result = await collector.collect_all_pages(
-            query=request.query,
-            max_items=max_items,
-            category=request.category,
-            min_price=request.min_price,
-            max_price=request.max_price,
-            condition=request.condition,
-            sort=request.sort,
-        )
-        return _convert_to_response(result)
-    finally:
-        await collector.close()
-
-
-# ==================== Helper Functions ====================
-
-def _convert_to_response(result: SearchResult, is_mock: bool = False) -> SearchResponse:
-    """SearchResult를 API 응답 형식으로 변환"""
-    items = [
-        SearchItemResponse(
-            item_id=item.item_id,
-            title=item.title,
-            price=float(item.price),
-            currency=item.currency,
-            shipping_fee=float(item.shipping_fee),
-            total_price=float(item.total_price),
-            condition=item.condition,
-            listing_type=item.listing_type,
-            seller_name=item.seller_name,
-            image_url=item.image_url,
-            item_url=item.item_url,
-            bid_count=item.bid_count,
-        )
-        for item in result.items
-    ]
-    
-    # 가격 통계
-    price_stats = None
-    if result.items:
-        stats = result.price_stats
-        price_stats = PriceStats(
-            min_price=float(stats["min_price"]),
-            max_price=float(stats["max_price"]),
-            avg_price=round(float(stats["avg_price"]), 2),
-            item_count=stats["item_count"],
-        )
-    
-    error_msg = result.error_message
-    if is_mock and not error_msg:
-        error_msg = "API not configured. Showing mock data for demonstration."
-    
-    return SearchResponse(
-        success=result.success,
-        query=result.query,
-        total_count=result.total_count,
-        items=items,
-        price_stats=price_stats,
-        page=result.page,
-        page_size=result.page_size,
-        has_more=result.has_more,
-        search_url=result.search_url,
-        collection_method=result.collection_method,
-        error=error_msg,
+    # Log request details for debugging (without exposing full token)
+    logger.info(
+        "Making eBay API request",
+        url=api_url,
+        params=params,
+        headers_keys=list(headers.keys()),
+        token_length=len(token),
+        token_starts_with=token[:50] if len(token) > 50 else token,
+        token_format_valid=token.startswith("v^"),
+        marketplace_id=headers["X-EBAY-C-MARKETPLACE-ID"],
+        enduserctx=headers["X-EBAY-C-ENDUSERCTX"]
     )
+    
+    # Make API request
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.get(
+                api_url,
+                params=params,
+                headers=headers,
+            )
+            
+            if response.status_code != 200:
+                error_detail = response.text
+                try:
+                    error_json = response.json()
+                    error_detail = str(error_json)
+                except:
+                    pass
+                
+                logger.error(
+                    "eBay API request failed",
+                    status_code=response.status_code,
+                    response_text=error_detail[:1000],
+                    request_url=api_url,
+                    request_params=params,
+                    token_length=len(token),
+                    token_prefix=token[:30] if len(token) > 30 else token
+                )
+                return SearchResponse(
+                    success=False,
+                    error=f"API request failed: HTTP {response.status_code} - {error_detail[:500]}"
+                )
+            
+            # Parse response
+            data = response.json()
+            
+            # Transform response to match our schema
+            item_summaries = []
+            if "itemSummaries" in data:
+                for item in data["itemSummaries"]:
+                    item_summaries.append(SearchItemResponse(**item))
+            
+            return SearchResponse(
+                success=True,
+                total=data.get("total"),
+                itemSummaries=item_summaries if item_summaries else None,
+            )
+            
+        except httpx.TimeoutException:
+            logger.error("Request timeout")
+            return SearchResponse(
+                success=False,
+                error="Request timeout"
+            )
+        except httpx.RequestError as e:
+            logger.error("Request error", error=str(e))
+            return SearchResponse(
+                success=False,
+                error=f"Request error: {str(e)}"
+            )
+        except Exception as e:
+            logger.error("Unexpected error", error=str(e), exc_info=True)
+            return SearchResponse(
+                success=False,
+                error=f"Unexpected error: {str(e)}"
+            )
