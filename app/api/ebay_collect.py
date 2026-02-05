@@ -8,9 +8,12 @@ import structlog
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict
 
-logger = structlog.get_logger()
+from app.core.config import get_settings
 
-router = APIRouter(prefix="/api/v1/search", tags=["search"])
+logger = structlog.get_logger()
+settings = get_settings()
+
+router = APIRouter(prefix="/api/ebay/item_summary/search", tags=["ebay"])
 
 
 class SearchItemResponse(BaseModel):
@@ -35,7 +38,7 @@ class SearchResponse(BaseModel):
 
 @router.get("", response_model=SearchResponse)
 async def search_products(
-    q: str = Query(..., description="검색 키워드 (예: 'drone', '3ce', 'iphone')"),
+    keyword: str = Query(..., description="검색 키워드 (예: 'drone', '3ce', 'iphone')"),
     limit: int = Query(3, ge=1, le=200, description="결과 수 (최대 200)"),
 ):
     """
@@ -46,21 +49,16 @@ async def search_products(
     
     **엔드포인트:**
     `https://api.ebay.com/buy/browse/v1/item_summary/search`
-    
-    **사용 예시:**
-    - GET /api/v1/search?q=drone&limit=3
-    - GET /api/v1/search?q=iphone&limit=10
-    
+
     **응답:**
     eBay API의 원본 응답을 그대로 반환합니다.
     """
     from pathlib import Path
     
-    logger.info("Search request", query=q, limit=limit)
+    logger.info("eBay search request", query=keyword, limit=limit)
     
     # Read OAuth token from file
     # Path: project_root/token
-    # Expected: C:\Users\cknb\Desktop\cursor\ebay-price-collector\token
     token_file = Path(__file__).parent.parent.parent / "token"
     
     logger.debug("Token file path", path=str(token_file.resolve()))
@@ -124,19 +122,19 @@ async def search_products(
             error=f"Failed to read token file: {str(e)}"
         )
     
-    # eBay API endpoint
-    api_url = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+    # eBay API endpoint - use config if available
+    api_url = getattr(settings, "ebay_api_url", "https://api.ebay.com/buy/browse/v1/item_summary/search")
     
     # Prepare request
     params = {
-        "q": q,
+        "q": keyword,
         "limit": limit,
     }
     
     headers = {
         "Authorization": f"Bearer {token}",
-        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-        "X-EBAY-C-ENDUSERCTX": "affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>",
+        "X-EBAY-C-MARKETPLACE-ID": getattr(settings, "ebay_marketplace_id", "EBAY_US"),
+        "X-EBAY-C-ENDUSERCTX": getattr(settings, "ebay_enduserctx", "affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>"),
         "Content-Type": "application/json",
     }
     
@@ -217,3 +215,4 @@ async def search_products(
                 success=False,
                 error=f"Unexpected error: {str(e)}"
             )
+

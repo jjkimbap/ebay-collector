@@ -1,14 +1,12 @@
-# eBay Price Collector
+# 상품 검색 API
 
-해외 가격 비교 서비스를 위한 eBay 상품 가격 정보 수집 모듈입니다.
+다양한 플랫폼의 상품 검색 API 서비스입니다.
 
 ## 📋 기능 개요
 
-- **URL 파싱**: eBay 상품 URL에서 itemId 자동 추출
-- **가격 수집**: eBay Browse API (우선) + HTML 스크래핑 (폴백)
-- **가격 정규화**: 통화 변환, 배송비 분리/합산
-- **히스토리 저장**: 가격 변동 추적을 위한 시계열 데이터 저장
-- **가격 알림**: 목표 가격 도달 시 알림 트리거
+- **eBay 상품 검색**: eBay Browse API를 사용한 상품 검색
+- **AliExpress 상품 검색**: AliExpress API를 사용한 상품 검색
+- **Amazon 상품 검색**: Amazon Product Advertising API를 사용한 상품 검색
 
 ## 🏗️ 아키텍처
 
@@ -17,25 +15,14 @@
 │                      FastAPI Application                      │
 ├─────────────────────────────────────────────────────────────┤
 │  API Routes                                                   │
-│  ├── POST /api/v1/parse-url    - URL 파싱                    │
-│  ├── POST /api/v1/collect      - 가격 수집                   │
-│  ├── POST /api/v1/track        - 상품 추적 등록              │
-│  └── GET  /api/v1/history/{store}/{item_id} - 가격 히스토리  │
+│  ├── GET /api/ebay/item_summary/search    - eBay 검색        │
+│  ├── GET /api/ali/item_summary/search     - AliExpress 검색  │
+│  └── GET /api/amazon/item_summary/search  - Amazon 검색     │
 ├─────────────────────────────────────────────────────────────┤
-│  Collectors (멀티 스토어 확장 가능)                          │
-│  └── EbayCollector                                           │
-│      ├── EbayApiClient  (eBay Browse API)                    │
-│      ├── EbayScraper    (HTML Fallback)                      │
-│      └── EbayUrlParser  (URL 파싱)                           │
-├─────────────────────────────────────────────────────────────┤
-│  Services                                                     │
-│  ├── CurrencyService      - 통화 변환                        │
-│  └── PriceHistoryService  - DB 저장/조회                     │
-├─────────────────────────────────────────────────────────────┤
-│  Database (PostgreSQL)                                        │
-│  ├── tracked_items    - 추적 중인 상품                       │
-│  ├── price_history    - 가격 히스토리                        │
-│  └── price_alerts     - 가격 알림 설정                       │
+│  Collectors                                                  │
+│  ├── ebay_collect.py    - eBay API 호출                     │
+│  ├── ali_collect.py     - AliExpress API 호출               │
+│  └── amazon_collect.py - Amazon API 호출                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -44,9 +31,7 @@
 ### 요구사항
 
 - Python 3.11+
-- PostgreSQL 15+
-- Redis (선택, 캐싱용)
-- eBay Developer 계정 (API 사용 시)
+- eBay/AliExpress/Amazon Developer 계정 (API 사용 시)
 
 ### 설치
 
@@ -83,140 +68,60 @@ open http://localhost:8000/docs
 ### 로컬 실행
 
 ```bash
-# PostgreSQL 실행 (Docker)
-docker run -d --name postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=price_collector \
-  -p 5432:5432 \
-  postgres:15-alpine
-
-# 마이그레이션 실행
-alembic upgrade head
+# 환경변수 설정
+cp .env.example .env
+# .env 파일에 API 키 설정
 
 # 서버 시작
 uvicorn app.main:app --reload
+
+# 또는 Python으로 직접 실행
+python -m app.main
 ```
 
 ## 📡 API 사용법
 
-### URL 파싱
+### eBay 상품 검색
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/parse-url \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://www.ebay.com/itm/256123456789"}'
+curl "http://localhost:8000/api/ebay/item_summary/search?keyword=drone&limit=3"
 ```
 
-### 개별 상품 가격 수집
+### AliExpress 상품 검색
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/collect \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://www.ebay.com/itm/256123456789"}'
+curl "http://localhost:8000/api/ali/item_summary/search?keyword=drone&limit=3"
 ```
 
-### 🔍 브랜드/키워드 검색 (NEW!)
+### Amazon 상품 검색
 
-**기본 검색:**
 ```bash
-curl -X POST http://localhost:8000/api/v1/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "3ce"}'
+curl "http://localhost:8000/api/amazon/item_summary/search?keyword=drone&limit=3"
 ```
 
-**카테고리 + 가격 필터 검색:**
-```bash
-curl -X POST http://localhost:8000/api/v1/search \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "3ce lipstick",
-    "category": "makeup",
-    "min_price": 5,
-    "max_price": 30,
-    "sort": "price",
-    "limit": 100
-  }'
-```
+### Swagger UI
 
-**브랜드 검색 (간편 API):**
-```bash
-curl "http://localhost:8000/api/v1/search/brand/3ce?category=makeup&limit=50"
-```
+브라우저에서 `http://localhost:8000/docs` 접속하여 모든 API를 테스트할 수 있습니다.
 
-**대량 수집 (여러 페이지):**
-```bash
-curl -X POST "http://localhost:8000/api/v1/search/bulk?max_items=500" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "3ce"}'
-```
+### 검색 응답 예시
 
-**지원 카테고리 조회:**
-```bash
-curl http://localhost:8000/api/v1/search/categories
-```
-
-검색 응답 예시:
 ```json
 {
   "success": true,
-  "query": "3ce",
-  "total_count": 875,
-  "items": [
+  "total": 44823,
+  "itemSummaries": [
     {
-      "item_id": "387049030112",
-      "title": "3CE MAKEUP FIXER MIST 100ml, Setting Sprays",
-      "price": 15.99,
-      "currency": "USD",
-      "shipping_fee": 9.50,
-      "total_price": 25.49,
-      "condition": "new",
-      "seller_name": "kbeautybloom",
-      "item_url": "https://www.ebay.com/itm/387049030112"
+      "itemId": "387049030112",
+      "title": "Drone 2026 4K HD Dual Camera WiFi FPV RC Foldable",
+      "price": {
+        "value": "99.99",
+        "currency": "USD"
+      },
+      "condition": "NEW",
+      "itemWebUrl": "https://www.ebay.com/itm/387049030112"
     }
   ],
-  "price_stats": {
-    "min_price": 8.99,
-    "max_price": 45.00,
-    "avg_price": 18.50,
-    "item_count": 50
-  },
-  "page": 1,
-  "has_more": true
-}
-```
-
-### 상품 추적 등록
-
-```bash
-curl -X POST http://localhost:8000/api/v1/track \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://www.ebay.com/itm/256123456789",
-    "target_price": 800.00,
-    "notification_email": "user@example.com"
-  }'
-```
-
-### 가격 히스토리 조회
-
-```bash
-curl "http://localhost:8000/api/v1/history/ebay/256123456789?days=30"
-```
-
-응답:
-```json
-{
-  "store": "ebay",
-  "item_id": "256123456789",
-  "title": "Apple iPhone 14 Pro 256GB",
-  "current_price": {"price": 999.99, "shipping_fee": 12.00, "currency": "USD"},
-  "lowest_price": {"price": 899.99, "shipping_fee": 12.00, "currency": "USD"},
-  "highest_price": {"price": 1099.99, "shipping_fee": 12.00, "currency": "USD"},
-  "average_price": 989.50,
-  "price_change_24h": -10.00,
-  "price_change_percentage_24h": -0.99,
-  "history": [...],
-  "total_records": 45
+  "error": null
 }
 ```
 
@@ -224,24 +129,36 @@ curl "http://localhost:8000/api/v1/history/ebay/256123456789?days=30"
 
 ### 환경변수
 
-| 변수 | 설명 | 기본값 |
-|-----|------|--------|
-| `DATABASE_URL` | PostgreSQL 연결 문자열 | - |
-| `REDIS_URL` | Redis 연결 문자열 | - |
-| `EBAY_APP_ID` | eBay API App ID | - |
-| `EBAY_CERT_ID` | eBay API Cert ID | - |
-| `EBAY_SANDBOX_MODE` | 샌드박스 모드 사용 | true |
-| `DEFAULT_CURRENCY` | 정규화 기준 통화 | USD |
-| `COLLECTION_INTERVAL_MINUTES` | 수집 주기 (분) | 60 |
+`.env` 파일에 다음 설정을 추가하세요:
 
-### eBay API 설정
+```env
+# Application
+APP_ENV=development
+APP_DEBUG=true
+APP_HOST=0.0.0.0
+APP_PORT=8000
 
-1. [eBay Developer Program](https://developer.ebay.com/) 가입
-2. Application 생성
-3. App ID, Cert ID 발급
-4. `.env` 파일에 설정
+# eBay API
+EBAY_API_URL=https://api.ebay.com/buy/browse/v1/item_summary/search
+EBAY_MARKETPLACE_ID=EBAY_US
+EBAY_ENDUSERCTX=affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>
 
-**API 없이 사용**: API 키가 없어도 HTML 스크래핑으로 기본 기능 사용 가능
+# AliExpress API
+ALI_API_URL=https://api.aliexpress.com/item/search
+ALI_API_KEY=your_ali_api_key
+
+# Amazon API
+AMAZON_API_URL=https://webservices.amazon.com/paapi5/searchitems
+AMAZON_ACCESS_KEY=your_amazon_access_key
+AMAZON_SECRET_KEY=your_amazon_secret_key
+AMAZON_ASSOCIATE_TAG=your_associate_tag
+```
+
+### API 키 발급
+
+- **eBay**: [eBay Developer Program](https://developer.ebay.com/)에서 OAuth 토큰 발급
+- **AliExpress**: [AliExpress API](https://developers.aliexpress.com/)에서 API 키 발급
+- **Amazon**: [Amazon Product Advertising API](https://affiliate-program.amazon.com/gp/advertising/api/detail/main.html)에서 키 발급
 
 ## 📁 프로젝트 구조
 
@@ -249,29 +166,17 @@ curl "http://localhost:8000/api/v1/history/ebay/256123456789?days=30"
 ebay-price-collector/
 ├── app/
 │   ├── api/
-│   │   └── routes.py           # API 엔드포인트
-│   ├── collectors/
-│   │   ├── base.py             # 베이스 인터페이스
-│   │   └── ebay/
-│   │       ├── api_client.py   # eBay API 클라이언트
-│   │       ├── scraper.py      # HTML 스크래퍼
-│   │       ├── url_parser.py   # URL 파서
-│   │       └── collector.py    # 통합 수집기
+│   │   ├── ebay_collect.py     # eBay 검색 API
+│   │   ├── ali_collect.py       # AliExpress 검색 API
+│   │   └── amazon_collect.py    # Amazon 검색 API
 │   ├── core/
-│   │   ├── config.py           # 설정 관리
-│   │   └── database.py         # DB 연결
-│   ├── models/
-│   │   ├── database.py         # SQLAlchemy 모델
-│   │   └── schemas.py          # Pydantic 스키마
-│   ├── services/
-│   │   ├── currency.py         # 통화 변환
-│   │   └── price_history.py    # 가격 히스토리
+│   │   └── config.py           # 설정 관리
 │   └── main.py                 # FastAPI 앱
-├── alembic/                    # DB 마이그레이션
 ├── tests/                      # 테스트
 ├── docker-compose.yml
 ├── Dockerfile
-└── requirements.txt
+├── requirements.txt
+└── token                       # eBay OAuth 토큰 파일
 ```
 
 ## 🧪 테스트
@@ -290,17 +195,17 @@ pytest tests/test_url_parser.py -v
 ## 🔜 향후 확장 계획
 
 ### 지원 예정 스토어
-- [ ] Amazon
+- [x] eBay
+- [x] AliExpress
+- [x] Amazon
 - [ ] Walmart
-- [ ] AliExpress
 - [ ] Coupang
 
 ### 기능 확장
-- [ ] 스케줄러 기반 자동 수집 (Celery/APScheduler)
-- [ ] Redis 캐싱
-- [ ] 이메일/푸시 알림
-- [ ] 가격 예측 (Prophet)
-- [ ] 관리자 대시보드
+- [ ] 응답 캐싱 (Redis)
+- [ ] 에러 재시도 로직 개선
+- [ ] API 응답 포맷 통일
+- [ ] 상세 상품 정보 조회 API
 
 ## 📝 라이선스
 

@@ -33,18 +33,20 @@ settings = get_settings()
 
 # Create application
 app = FastAPI(
-    title="eBay 상품 검색 API",
+    title="상품 검색 API",
     description="""
-    eBay Browse API를 사용한 상품 검색 API
+    다양한 플랫폼의 상품 검색 API
     
-    ## 주요 기능
+    ## 지원 플랫폼
     
-    * **상품 검색**: 키워드로 eBay 상품 검색
+    * **eBay**: eBay Browse API를 사용한 상품 검색
+    * **AliExpress**: AliExpress API를 사용한 상품 검색
+    * **Amazon**: Amazon Product Advertising API를 사용한 상품 검색
     
     ## 사용 방법
     
     1. Swagger UI에서 API 엔드포인트를 테스트할 수 있습니다
-    2. 검색 키워드를 입력하여 상품을 검색합니다
+    2. 각 플랫폼별로 검색 키워드를 입력하여 상품을 검색합니다
     """,
     version="1.0.0",
     docs_url="/docs",
@@ -79,9 +81,14 @@ async def global_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# Include search routes
-from app.api.search_routes import router as search_router
-app.include_router(search_router)
+# Include collector routes
+from app.api.ebay_collect import router as ebay_router
+from app.api.ali_collect import router as ali_router
+from app.api.amazon_collect import router as amazon_router
+
+app.include_router(ebay_router)
+app.include_router(ali_router)
+app.include_router(amazon_router)
 
 
 @app.get("/health", tags=["health"])

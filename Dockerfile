@@ -17,9 +17,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies (if needed)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy wheels from builder
@@ -28,8 +27,6 @@ RUN pip install --no-cache /wheels/*
 
 # Copy application
 COPY app/ app/
-COPY alembic/ alembic/
-COPY alembic.ini .
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser

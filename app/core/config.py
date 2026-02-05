@@ -27,6 +27,21 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "json"
     
+    # eBay API Settings
+    ebay_api_url: str = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+    ebay_marketplace_id: str = "EBAY_US"
+    ebay_enduserctx: str = "affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>"
+    
+    # AliExpress API Settings
+    ali_api_url: str = "https://api.aliexpress.com/item/search"
+    ali_api_key: str = ""
+    
+    # Amazon API Settings
+    amazon_api_url: str = "https://webservices.amazon.com/paapi5/searchitems"
+    amazon_access_key: str = ""
+    amazon_secret_key: str = ""
+    amazon_associate_tag: str = ""
+    
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
