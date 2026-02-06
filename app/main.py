@@ -2,12 +2,18 @@
 Main FastAPI application.
 eBay 상품 검색 API.
 """
+import asyncio
+import sys
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
+
+# Ensure subprocess support for Playwright on Windows
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # Configure structured logging
 structlog.configure(

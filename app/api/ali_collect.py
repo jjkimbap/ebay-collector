@@ -3,15 +3,13 @@ AliExpress 상품 검색 API
 """
 from typing import Any, Optional
 
-import httpx
 import structlog
 from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict
 
-from app.core.config import get_settings
+from app.lib.commerce_playwright import search_items
 
 logger = structlog.get_logger()
-settings = get_settings()
 
 router = APIRouter(prefix="/api/ali/item_summary/search", tags=["ali"])
 
@@ -22,7 +20,11 @@ class SearchItemResponse(BaseModel):
     
     itemId: Optional[str] = None
     title: Optional[str] = None
-    price: Optional[dict[str, Any]] = None
+    price: Optional[dict[str, Any]] = None  # 현재 가격 (할인된 가격)
+    originalPrice: Optional[dict[str, Any]] = None  # 원래 가격
+    discount: Optional[str] = None  # 할인율 (예: "85%")
+    rating: Optional[str] = None  # 평점 (예: "4.8")
+    sales: Optional[str] = None  # 판매량 (예: "900+", "1.2k")
     condition: Optional[str] = None
     image: Optional[dict[str, Any]] = None
     itemWebUrl: Optional[str] = None
@@ -44,107 +46,22 @@ async def search_products(
     """
     AliExpress 상품 검색 API
     
-    AliExpress API를 사용하여 상품을 검색합니다.
+    Playwright를 사용하여 상품을 검색합니다.
     
     **설정:**
-    - API URL: `ali_api_url` (config에서 설정)
-    - API Key: `ali_api_key` (config에서 설정)
+    - PLAYWRIGHT_HEADLESS
+    - PLAYWRIGHT_PROXY (선택)
     """
     logger.info("AliExpress search request", query=keyword, limit=limit)
-    
-    # Get API configuration from settings
-    api_url = getattr(settings, "ali_api_url", "https://api.aliexpress.com/item/search")
-    api_key = getattr(settings, "ali_api_key", "")
-    
-    if not api_key:
-        logger.error("AliExpress API key not configured")
-        return SearchResponse(
-            success=False,
-            error="AliExpress API key not configured. Please set ALI_API_KEY in .env file."
-        )
-    
-    # Prepare request
-    params = {
-        "keyword": keyword,
-        "limit": limit,
-    }
-    
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    
-    logger.info(
-        "Making AliExpress API request",
-        url=api_url,
-        params=params,
-        headers_keys=list(headers.keys())
+
+    result = await search_items("aliexpress", keyword, limit)
+    if not result.get("success"):
+        return SearchResponse(success=False, error=result.get("error", "Unknown error"))
+
+    item_summaries = [SearchItemResponse(**item) for item in result.get("items", [])]
+    return SearchResponse(
+        success=True,
+        total=result.get("total", len(item_summaries)),
+        itemSummaries=item_summaries if item_summaries else None,
     )
-    
-    # Make API request
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.get(
-                api_url,
-                params=params,
-                headers=headers,
-            )
-            
-            if response.status_code != 200:
-                error_detail = response.text
-                try:
-                    error_json = response.json()
-                    error_detail = str(error_json)
-                except:
-                    pass
-                
-                logger.error(
-                    "AliExpress API request failed",
-                    status_code=response.status_code,
-                    response_text=error_detail[:1000],
-                    request_url=api_url,
-                    request_params=params
-                )
-                return SearchResponse(
-                    success=False,
-                    error=f"API request failed: HTTP {response.status_code} - {error_detail[:500]}"
-                )
-            
-            # Parse response
-            data = response.json()
-            
-            # Transform response to match our schema
-            item_summaries = []
-            # Adjust based on actual AliExpress API response structure
-            if "items" in data:
-                for item in data["items"]:
-                    item_summaries.append(SearchItemResponse(**item))
-            elif "results" in data:
-                for item in data["results"]:
-                    item_summaries.append(SearchItemResponse(**item))
-            
-            return SearchResponse(
-                success=True,
-                total=data.get("total", len(item_summaries)),
-                itemSummaries=item_summaries if item_summaries else None,
-            )
-            
-        except httpx.TimeoutException:
-            logger.error("Request timeout")
-            return SearchResponse(
-                success=False,
-                error="Request timeout"
-            )
-        except httpx.RequestError as e:
-            logger.error("Request error", error=str(e))
-            return SearchResponse(
-                success=False,
-                error=f"Request error: {str(e)}"
-            )
-        except Exception as e:
-            logger.error("Unexpected error", error=str(e), exc_info=True)
-            return SearchResponse(
-                success=False,
-                error=f"Unexpected error: {str(e)}"
-            )
 

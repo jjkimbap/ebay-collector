@@ -29,9 +29,10 @@ class Settings(BaseSettings):
     
     # eBay API Settings
     ebay_api_url: str = "https://api.ebay.com/buy/browse/v1/item_summary/search"
-    ebay_marketplace_id: str = "EBAY_US"
+    ebay_marketplace_id: str = "EBAY_KR"
     ebay_enduserctx: str = "affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>"
-    
+    ebay_app_id: str = ""
+    ebay_cert_id: str = ""
     # AliExpress API Settings
     ali_api_url: str = "https://api.aliexpress.com/item/search"
     ali_api_key: str = ""
@@ -41,6 +42,12 @@ class Settings(BaseSettings):
     amazon_access_key: str = ""
     amazon_secret_key: str = ""
     amazon_associate_tag: str = ""
+
+    # Playwright scraping (Unified)
+    playwright_headless: bool = False
+    playwright_proxy: str = ""
+    playwright_amazon_domain: str = "com"
+    playwright_ebay_domain: str = "com"
     
     @property
     def is_production(self) -> bool:

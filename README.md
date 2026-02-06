@@ -4,9 +4,9 @@
 
 ## 📋 기능 개요
 
-- **eBay 상품 검색**: eBay Browse API를 사용한 상품 검색
-- **AliExpress 상품 검색**: AliExpress API를 사용한 상품 검색
-- **Amazon 상품 검색**: Amazon Product Advertising API를 사용한 상품 검색
+- **eBay 상품 검색**: Playwright 기반 스크래핑
+- **AliExpress 상품 검색**: Playwright 기반 스크래핑
+- **Amazon 상품 검색**: Playwright 기반 스크래핑
 
 ## 🏗️ 아키텍처
 
@@ -31,7 +31,7 @@
 ### 요구사항
 
 - Python 3.11+
-- eBay/AliExpress/Amazon Developer 계정 (API 사용 시)
+- Playwright 설치 (브라우저 바이너리 포함)
 
 ### 설치
 
@@ -138,27 +138,16 @@ APP_DEBUG=true
 APP_HOST=0.0.0.0
 APP_PORT=8000
 
-# eBay API
-EBAY_API_URL=https://api.ebay.com/buy/browse/v1/item_summary/search
-EBAY_MARKETPLACE_ID=EBAY_US
-EBAY_ENDUSERCTX=affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>
-
-# AliExpress API
-ALI_API_URL=https://api.aliexpress.com/item/search
-ALI_API_KEY=your_ali_api_key
-
-# Amazon API
-AMAZON_API_URL=https://webservices.amazon.com/paapi5/searchitems
-AMAZON_ACCESS_KEY=your_amazon_access_key
-AMAZON_SECRET_KEY=your_amazon_secret_key
-AMAZON_ASSOCIATE_TAG=your_associate_tag
+# Playwright scraping (Unified)
+PLAYWRIGHT_HEADLESS=true
+PLAYWRIGHT_PROXY=
+PLAYWRIGHT_AMAZON_DOMAIN=com
+PLAYWRIGHT_EBAY_DOMAIN=com
 ```
 
 ### API 키 발급
 
-- **eBay**: [eBay Developer Program](https://developer.ebay.com/)에서 OAuth 토큰 발급
-- **AliExpress**: [AliExpress API](https://developers.aliexpress.com/)에서 API 키 발급
-- **Amazon**: [Amazon Product Advertising API](https://affiliate-program.amazon.com/gp/advertising/api/detail/main.html)에서 키 발급
+- **Playwright**: `pip install playwright` 후 `playwright install`
 
 ## 📁 프로젝트 구조
 

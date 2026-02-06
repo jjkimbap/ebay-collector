@@ -9,11 +9,34 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, ConfigDict
 
 from app.core.config import get_settings
+from app.lib.ebay_token_manager import EbayTokenManager
 
 logger = structlog.get_logger()
 settings = get_settings()
 
 router = APIRouter(prefix="/api/ebay/item_summary/search", tags=["ebay"])
+
+# 전역 토큰 관리자 인스턴스
+_token_manager: Optional[EbayTokenManager] = None
+
+
+def get_token_manager() -> EbayTokenManager:
+    """토큰 관리자 싱글톤 인스턴스 반환"""
+    global _token_manager
+    
+    if _token_manager is None:
+        if not settings.ebay_app_id or not settings.ebay_cert_id:
+            raise ValueError("eBay App ID and Cert ID must be configured in settings")
+        
+        _token_manager = EbayTokenManager(
+            app_id=settings.ebay_app_id,
+            cert_id=settings.ebay_cert_id
+        )
+        
+        # 기존 토큰 파일이 있으면 로드 시도
+        _token_manager.load_token_from_file()
+    
+    return _token_manager
 
 
 class SearchItemResponse(BaseModel):
@@ -46,6 +69,7 @@ async def search_products(
     
     eBay Browse API의 search 엔드포인트를 직접 호출합니다.
     OAuth 2.0 토큰을 사용하여 인증합니다.
+    토큰 만료 시 자동으로 재발급합니다.
     
     **엔드포인트:**
     `https://api.ebay.com/buy/browse/v1/item_summary/search`
@@ -53,73 +77,23 @@ async def search_products(
     **응답:**
     eBay API의 원본 응답을 그대로 반환합니다.
     """
-    from pathlib import Path
-    
     logger.info("eBay search request", query=keyword, limit=limit)
     
-    # Read OAuth token from file
-    # Path: project_root/token
-    token_file = Path(__file__).parent.parent.parent / "token"
-    
-    logger.debug("Token file path", path=str(token_file.resolve()))
-    
-    if not token_file.exists():
-        logger.error("Token file not found", path=str(token_file.resolve()))
-        return SearchResponse(
-            success=False,
-            error=f"Token file not found: {token_file.resolve()}"
-        )
-    
+    # 토큰 관리자에서 토큰 가져오기
     try:
-        # Read token file - try multiple encodings
-        raw_content = None
-        for encoding in ["utf-8", "utf-8-sig", "latin-1"]:
-            try:
-                raw_content = token_file.read_text(encoding=encoding)
-                break
-            except UnicodeDecodeError:
-                continue
-        
-        if raw_content is None:
-            # Fallback to bytes
-            raw_content = token_file.read_bytes().decode("utf-8", errors="ignore")
-        
-        logger.info("Token file read", content_length=len(raw_content), first_chars=raw_content[:50] if raw_content else None)
-        
-        # Strip whitespace and newlines
-        token = raw_content.strip().strip('"').strip("'")
-        
-        # Remove any trailing newlines or carriage returns
-        token = token.replace("\r", "").replace("\n", "").strip()
-        
-        if not token:
-            logger.error(
-                "Token file is empty",
-                path=str(token_file.resolve()),
-                file_size=token_file.stat().st_size if token_file.exists() else 0,
-                raw_content_length=len(raw_content)
-            )
-            return SearchResponse(
-                success=False,
-                error=f"Token file is empty (file size: {token_file.stat().st_size if token_file.exists() else 0} bytes)"
-            )
-        
-        # Validate token format (eBay tokens typically start with 'v^')
-        if not token.startswith("v^"):
-            logger.warning("Token format may be invalid", token_prefix=token[:30])
-        
-        logger.info("Token loaded successfully", token_length=len(token), token_prefix=token[:30] + "..." if len(token) > 30 else token)
-    except FileNotFoundError:
-        logger.error("Token file not found", path=str(token_file.resolve()))
+        token_manager = get_token_manager()
+        token = token_manager.get_token()
+    except ValueError as e:
+        logger.error("Token manager initialization failed", error=str(e))
         return SearchResponse(
             success=False,
-            error=f"Token file not found: {token_file.resolve()}"
+            error=f"Token manager error: {str(e)}"
         )
     except Exception as e:
-        logger.error("Failed to read token file", error=str(e), exc_info=True)
+        logger.error("Failed to get token", error=str(e), exc_info=True)
         return SearchResponse(
             success=False,
-            error=f"Failed to read token file: {str(e)}"
+            error=f"Failed to get token: {str(e)}"
         )
     
     # eBay API endpoint - use config if available
@@ -133,23 +107,10 @@ async def search_products(
     
     headers = {
         "Authorization": f"Bearer {token}",
-        "X-EBAY-C-MARKETPLACE-ID": getattr(settings, "ebay_marketplace_id", "EBAY_US"),
+        "X-EBAY-C-MARKETPLACE-ID": getattr(settings, "ebay_marketplace_id", "EBAY_KR"),
         "X-EBAY-C-ENDUSERCTX": getattr(settings, "ebay_enduserctx", "affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>"),
         "Content-Type": "application/json",
     }
-    
-    # Log request details for debugging (without exposing full token)
-    logger.info(
-        "Making eBay API request",
-        url=api_url,
-        params=params,
-        headers_keys=list(headers.keys()),
-        token_length=len(token),
-        token_starts_with=token[:50] if len(token) > 50 else token,
-        token_format_valid=token.startswith("v^"),
-        marketplace_id=headers["X-EBAY-C-MARKETPLACE-ID"],
-        enduserctx=headers["X-EBAY-C-ENDUSERCTX"]
-    )
     
     # Make API request
     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -159,6 +120,27 @@ async def search_products(
                 params=params,
                 headers=headers,
             )
+            
+            # 토큰 만료 에러(401) 발생 시 재발급 후 재시도
+            if response.status_code == 401:
+                logger.warning("Token expired, refreshing and retrying")
+                try:
+                    token_manager._refresh_token()
+                    token = token_manager.get_token()
+                    headers["Authorization"] = f"Bearer {token}"
+                    
+                    # 재시도
+                    response = await client.get(
+                        api_url,
+                        params=params,
+                        headers=headers,
+                    )
+                except Exception as retry_error:
+                    logger.error("Failed to refresh token on 401 error", error=str(retry_error))
+                    return SearchResponse(
+                        success=False,
+                        error=f"Token refresh failed: {str(retry_error)}"
+                    )
             
             if response.status_code != 200:
                 error_detail = response.text
@@ -174,8 +156,6 @@ async def search_products(
                     response_text=error_detail[:1000],
                     request_url=api_url,
                     request_params=params,
-                    token_length=len(token),
-                    token_prefix=token[:30] if len(token) > 30 else token
                 )
                 return SearchResponse(
                     success=False,
