@@ -26,6 +26,7 @@ class SearchItemResponse(BaseModel):
     rating: Optional[str] = None  # 평점 (예: "4.8")
     sales: Optional[str] = None  # 판매량 (예: "900+", "1.2k")
     condition: Optional[str] = None
+    category: Optional[str] = None  # 카테고리 (예: "Beauty & Personal Care > Makeup")
     image: Optional[dict[str, Any]] = None
     itemWebUrl: Optional[str] = None
 
@@ -51,6 +52,14 @@ async def search_products(
     **설정:**
     - PLAYWRIGHT_HEADLESS
     - PLAYWRIGHT_PROXY (선택)
+    - PLAYWRIGHT_ALIEXPRESS_LANG (기본값: ko)
+    - PLAYWRIGHT_LOCALE (기본값: ko-KR)
+    
+    **수집 정보:**
+    - 상품 제목, 가격, 원래 가격, 할인율
+    - 평점, 판매량
+    - 카테고리
+    - 상품 이미지, 링크
     """
     logger.info("AliExpress search request", query=keyword, limit=limit)
 

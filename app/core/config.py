@@ -46,8 +46,10 @@ class Settings(BaseSettings):
     # Playwright scraping (Unified)
     playwright_headless: bool = False
     playwright_proxy: str = ""
-    playwright_amazon_domain: str = "com"
+    playwright_amazon_domain: str = "com"  # "com" or "co.kr" for Korean
     playwright_ebay_domain: str = "com"
+    playwright_locale: str = "ko-KR" #"en-US"  # "en-US" or "ko-KR" for Korean
+    playwright_aliexpress_lang: str = "ko" #"en"  # "en" or "ko" for Korean
     
     @property
     def is_production(self) -> bool:

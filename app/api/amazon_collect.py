@@ -26,6 +26,7 @@ class SearchItemResponse(BaseModel):
     rating: Optional[str] = None  # 평점 (예: "4.5")
     reviews: Optional[str] = None  # 리뷰 수 (예: "1,234")
     condition: Optional[str] = None  # 상품 상태 (예: "New", "Used")
+    category: Optional[str] = None  # 카테고리 (예: "Beauty & Personal Care > Makeup")
     image: Optional[dict[str, Any]] = None
     itemWebUrl: Optional[str] = None
 
@@ -48,6 +49,10 @@ async def search_products(
     
     Playwright를 사용하여 상품을 검색합니다.
     
+    **필터링:**
+    - 상품 제목에 검색 키워드가 포함된 상품만 수집합니다.
+    - 키워드가 여러 단어인 경우, 주요 단어들이 제목에 포함된 상품을 수집합니다.
+    
     **설정:**
     - PLAYWRIGHT_HEADLESS
     - PLAYWRIGHT_PROXY (선택)
@@ -56,6 +61,7 @@ async def search_products(
     **수집 정보:**
     - 상품 제목, 가격, 원래 가격, 할인율
     - 평점, 리뷰 수
+    - 카테고리
     - 상품 이미지, 링크
     - ASIN (Amazon Standard Identification Number)
     """
@@ -66,9 +72,11 @@ async def search_products(
         return SearchResponse(success=False, error=result.get("error", "Unknown error"))
 
     item_summaries = [SearchItemResponse(**item) for item in result.get("items", [])]
+    # total은 필터링 후 실제로 수집된 아이템 수 (제목에 키워드가 포함된 상품 수)
+    total_count = len(item_summaries)
     return SearchResponse(
         success=True,
-        total=result.get("total", len(item_summaries)),
+        total=total_count,
         itemSummaries=item_summaries if item_summaries else None,
     )
 
