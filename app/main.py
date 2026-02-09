@@ -91,10 +91,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 from app.api.ebay_collect import router as ebay_router
 from app.api.ali_collect import router as ali_router
 from app.api.amazon_collect import router as amazon_router
+from app.api.aliAffiliate_collect import router as ali_affiliate_router
 
 app.include_router(ebay_router)
 app.include_router(ali_router)
 app.include_router(amazon_router)
+app.include_router(ali_affiliate_router)
 
 
 @app.get("/health", tags=["health"])

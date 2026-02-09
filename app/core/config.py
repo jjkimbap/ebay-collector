@@ -36,7 +36,11 @@ class Settings(BaseSettings):
     # AliExpress API Settings
     ali_api_url: str = "https://api.aliexpress.com/item/search"
     ali_api_key: str = ""
-    
+    # AliExpress Affiliates API Settings
+    ali_affiliate_api_url: str = "https://api-sg.aliexpress.com/sync"
+    ali_affiliate_app_key: str = "526854"
+    ali_affiliate_app_secret: str = "9tVpyZeJ4iXLbvZpV5SqjKrWriMfqxWx"
+    ali_affiliate_app_secret
     # Amazon API Settings
     amazon_api_url: str = "https://webservices.amazon.com/paapi5/searchitems"
     amazon_access_key: str = ""
@@ -50,6 +54,8 @@ class Settings(BaseSettings):
     playwright_ebay_domain: str = "com"
     playwright_locale: str = "ko-KR" #"en-US"  # "en-US" or "ko-KR" for Korean
     playwright_aliexpress_lang: str = "ko" #"en"  # "en" or "ko" for Korean
+    playwright_require_keyword_in_title: bool = True
+    playwright_aliexpress_storage_state: str = "app/cache/aliexpress_storage.json"
     
     @property
     def is_production(self) -> bool:
