@@ -80,7 +80,7 @@ def _transform_product(product: Any) -> dict[str, Any]:
         # 가격 정보 추출
         sale_price = getattr(product, 'sale_price', None) or getattr(product, 'product_price', None)
         original_price = getattr(product, 'original_price', None) or sale_price
-        currency = getattr(product, 'target_currency', None) or getattr(product, 'currency', 'USD')
+        currency = getattr(product, 'target_currency', None) or getattr(product, 'currency', 'KRW')
         
         # 할인율 계산
         discount = None
@@ -439,15 +439,15 @@ async def search_products(
     """
     settings = get_settings()
     
-    # 설정 확인
-    app_key = getattr(settings, 'ali_affiliate_app_key', '') or settings.ali_api_key
-    app_secret = getattr(settings, 'ali_affiliate_app_secret', '') or ''
+    # 설정 확인 (Affiliates API용 키 사용)
+    app_key = settings.ali_affiliate_app_key
+    app_secret = settings.ali_affiliate_app_secret
     
     if not app_key or not app_secret:
         logger.error("AliExpress Affiliates API credentials not configured")
         return SearchResponse(
             success=False,
-            error="AliExpress Affiliates API credentials not configured. Please set ALI_AFFILIATE_APP_KEY and ALI_AFFILIATE_APP_SECRET"
+            error="AliExpress Affiliates API credentials not configured. Please set ALI_AFFILIATE_APP_KEY and ALI_AFFILIATE_APP_SECRET in .env file"
         )
     
     logger.info("AliExpress Affiliates API search request", query=keyword, limit=limit)

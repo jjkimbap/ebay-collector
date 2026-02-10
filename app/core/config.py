@@ -29,18 +29,18 @@ class Settings(BaseSettings):
     
     # eBay API Settings
     ebay_api_url: str = "https://api.ebay.com/buy/browse/v1/item_summary/search"
-    ebay_marketplace_id: str = "EBAY_KR"
+    ebay_marketplace_id: str = "EBAY_KO"
     ebay_enduserctx: str = "affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>"
     ebay_app_id: str = ""
     ebay_cert_id: str = ""
     # AliExpress API Settings
     ali_api_url: str = "https://api.aliexpress.com/item/search"
-    ali_api_key: str = ""
     # AliExpress Affiliates API Settings
+    # These values are loaded from .env file (ALI_AFFILIATE_APP_KEY, ALI_AFFILIATE_APP_SECRET)
     ali_affiliate_api_url: str = "https://api-sg.aliexpress.com/sync"
-    ali_affiliate_app_key: str = "526854"
-    ali_affiliate_app_secret: str = "9tVpyZeJ4iXLbvZpV5SqjKrWriMfqxWx"
-    ali_affiliate_app_secret
+    ali_affiliate_app_key: str = ""  # Loaded from .env: ALI_AFFILIATE_APP_KEY
+    ali_affiliate_app_secret: str = ""  # Loaded from .env: ALI_AFFILIATE_APP_SECRET
+
     # Amazon API Settings
     amazon_api_url: str = "https://webservices.amazon.com/paapi5/searchitems"
     amazon_access_key: str = ""
@@ -51,7 +51,6 @@ class Settings(BaseSettings):
     playwright_headless: bool = False
     playwright_proxy: str = ""
     playwright_amazon_domain: str = "com"  # "com" or "co.kr" for Korean
-    playwright_ebay_domain: str = "com"
     playwright_locale: str = "ko-KR" #"en-US"  # "en-US" or "ko-KR" for Korean
     playwright_aliexpress_lang: str = "ko" #"en"  # "en" or "ko" for Korean
     playwright_require_keyword_in_title: bool = True
