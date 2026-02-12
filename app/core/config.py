@@ -26,9 +26,19 @@ class Settings(BaseSettings):
     # Logging
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "json"
+
+    # MongoDB Settings
+    # These values are loaded from .env file (MONGO_URI, MONGO_DB, etc.)
+    # MONGO_URI format: mongodb://[username:password@]host[:port][/database][?options]
+    # Example: mongodb://root:password@13.229.41.87:27017/
+    mongo_uri: str = "mongodb://localhost:27017/"  # Loaded from .env: MONGO_URI
+    mongo_db: str = "hiddentag_eye_monitor"  # Loaded from .env: MONGO_DB
+    mongo_keywords_collection: str = "dailyPricesCustomer"  # Loaded from .env: MONGO_KEYWORDS_COLLECTION
+    mongo_products_collection: str = "daily_products"  # Loaded from .env: MONGO_PRODUCTS_COLLECTION
     
     # eBay API Settings
     ebay_api_url: str = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+    ebay_item_api_url: str = "https://api.ebay.com/buy/browse/v1/item"  # Item detail API
     ebay_marketplace_id: str = "EBAY_KO"
     ebay_enduserctx: str = "affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>"
     ebay_app_id: str = ""

@@ -115,7 +115,7 @@ curl "http://localhost:8000/api/amazon/item_summary/search?keyword=drone&limit=3
       "title": "Drone 2026 4K HD Dual Camera WiFi FPV RC Foldable",
       "price": {
         "value": "99.99",
-        "currency": "USD"
+        "currency": "KRW"
       },
       "condition": "NEW",
       "itemWebUrl": "https://www.ebay.com/itm/387049030112"

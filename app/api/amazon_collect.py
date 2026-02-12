@@ -17,7 +17,6 @@ router = APIRouter(prefix="/api/amazon/item_summary/search", tags=["amazon"])
 class SearchItemResponse(BaseModel):
     """검색 결과 개별 아이템"""
     model_config = ConfigDict(extra="allow")  # 추가 필드 허용
-    
     itemId: Optional[str] = None  # ASIN (Amazon Standard Identification Number)
     title: Optional[str] = None
     price: Optional[dict[str, Any]] = None  # 현재 가격
@@ -52,18 +51,6 @@ async def search_products(
     **필터링:**
     - 상품 제목에 검색 키워드가 포함된 상품만 수집합니다.
     - 키워드가 여러 단어인 경우, 주요 단어들이 제목에 포함된 상품을 수집합니다.
-    
-    **설정:**
-    - PLAYWRIGHT_HEADLESS
-    - PLAYWRIGHT_PROXY (선택)
-    - PLAYWRIGHT_AMAZON_DOMAIN (기본값: com)
-    
-    **수집 정보:**
-    - 상품 제목, 가격, 원래 가격, 할인율
-    - 평점, 리뷰 수
-    - 카테고리
-    - 상품 이미지, 링크
-    - ASIN (Amazon Standard Identification Number)
     """
     logger.info("Amazon search request", query=keyword, limit=limit)
 

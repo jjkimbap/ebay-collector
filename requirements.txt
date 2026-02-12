@@ -19,3 +19,6 @@ tenacity==8.2.3
 
 # Logging & Monitoring
 structlog==24.1.0
+
+# MongoDB
+motor==3.3.2
