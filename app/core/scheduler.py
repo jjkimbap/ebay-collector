@@ -1,6 +1,7 @@
 """
 스케줄러 설정
 """
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import structlog
@@ -10,17 +11,21 @@ from app.services.keyword_service import get_customer_keywords
 
 logger = structlog.get_logger()
 
-scheduler = AsyncIOScheduler()
+# 한국 시간대 설정 (Python 3.9+ 표준 라이브러리 사용)
+KST = ZoneInfo("Asia/Seoul")
+
+# 타임존을 명시적으로 설정한 스케줄러
+scheduler = AsyncIOScheduler(timezone=KST)
 
 
 async def scheduled_crawl_amazon():
     """
-    매일 오전 3시에 실행되는 스케줄된 크롤링 작업
+    매일 오후 4시에 실행되는 스케줄된 크롤링 작업
     
     price_level=2인 모든 고객에 대해 크롤링을 실행합니다.
     """
     price_level = 2
-    limit = 5  # 각 키워드당 수집할 상품 수
+    limit = 20  # 각 키워드당 수집할 상품 수
     
     logger.info("Scheduled crawl started", price_level=price_level, limit=limit)
     
@@ -80,17 +85,24 @@ async def scheduled_crawl_amazon():
 
 def setup_scheduler():
     """스케줄러를 설정하고 시작합니다."""
-    # 매일 오전 3시에 실행 (cron: 0 3 * * *)
+    # 매일 오후 4시에 실행 (KST 기준)
     scheduler.add_job(
         scheduled_crawl_amazon,
-        trigger=CronTrigger(hour=3, minute=0),
+        trigger=CronTrigger(hour=16, minute=0, timezone=KST),
         id="daily_amazon_crawl",
-        name="Daily Amazon Crawl at 3 AM",
+        name="Daily Amazon Crawl at 4 PM",
         replace_existing=True,
+        misfire_grace_time=3600,  # 놓친 작업을 1시간 내에 실행 가능하도록 설정
+        coalesce=True,  # 여러 번 놓친 작업을 하나로 합침
     )
     
     scheduler.start()
-    logger.info("Scheduler started", job_id="daily_amazon_crawl", schedule="0 3 * * *")
+    logger.info(
+        "Scheduler started",
+        job_id="daily_amazon_crawl",
+        schedule="0 16 * * * (KST)",
+        timezone="Asia/Seoul"
+    )
 
 
 def shutdown_scheduler():

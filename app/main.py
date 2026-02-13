@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.scheduler import setup_scheduler, shutdown_scheduler
+from app.repositories.amazon_items import create_indexes
 
 # Ensure subprocess support for Playwright on Windows
 if sys.platform.startswith("win"):
@@ -43,6 +44,8 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """애플리케이션 생명주기 관리"""
+    # 시작 시 MongoDB 인덱스 생성 (TTL 포함)
+    await create_indexes()
     # 시작 시 스케줄러 시작
     setup_scheduler()
     logger.info("Application started")

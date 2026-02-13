@@ -22,3 +22,6 @@ structlog==24.1.0
 
 # MongoDB
 motor==3.3.2
+
+# Scheduler
+apscheduler==3.10.4

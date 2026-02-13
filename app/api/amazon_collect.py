@@ -5,7 +5,7 @@ from typing import Any, Optional
 
 import structlog
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.lib.commerce_playwright import search_items
 
@@ -14,13 +14,19 @@ logger = structlog.get_logger()
 router = APIRouter(prefix="/api/amazon/item_summary/search", tags=["amazon"])
 
 
+class Price(BaseModel):
+    """가격 정보 모델"""
+    value: float  # 가격 값 (Number 타입)
+    currency: str  # 통화 코드 (예: "USD", "KRW")
+
+
 class SearchItemResponse(BaseModel):
     """검색 결과 개별 아이템"""
     model_config = ConfigDict(extra="allow")  # 추가 필드 허용
     itemId: Optional[str] = None  # ASIN (Amazon Standard Identification Number)
     title: Optional[str] = None
-    price: Optional[dict[str, Any]] = None  # 현재 가격
-    originalPrice: Optional[dict[str, Any]] = None  # 원래 가격 (할인 전)
+    price: Optional[Price] = None  # 현재 가격
+    originalPrice: Optional[Price] = None  # 원래 가격 (할인 전)
     discount: Optional[str] = None  # 할인율 (예: "25%")
     rating: Optional[str] = None  # 평점 (예: "4.5")
     reviews: Optional[str] = None  # 리뷰 수 (예: "1,234")
@@ -28,6 +34,21 @@ class SearchItemResponse(BaseModel):
     category: Optional[str] = None  # 카테고리 (예: "Beauty & Personal Care > Makeup")
     image: Optional[dict[str, Any]] = None
     itemWebUrl: Optional[str] = None
+    
+    @field_validator('price', 'originalPrice', mode='before')
+    @classmethod
+    def convert_price_value(cls, v):
+        """price와 originalPrice의 value를 문자열에서 숫자로 변환"""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            # value가 문자열인 경우 숫자로 변환
+            if 'value' in v and isinstance(v['value'], str):
+                try:
+                    v['value'] = float(v['value'])
+                except (ValueError, TypeError):
+                    pass
+        return v
 
 
 class SearchResponse(BaseModel):

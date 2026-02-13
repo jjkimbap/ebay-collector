@@ -3,6 +3,7 @@
 """
 from datetime import datetime
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import structlog
 
@@ -11,6 +12,11 @@ from app.repositories.amazon_items import save_amazon_item
 from app.services.keyword_service import get_customer_keywords
 
 logger = structlog.get_logger()
+
+
+def get_kst_now() -> datetime:
+    """대한민국 서울 시간(KST, UTC+9)을 반환합니다."""
+    return datetime.now(ZoneInfo("Asia/Seoul"))
 
 
 def transform_category(category: Optional[str]) -> list[str]:
@@ -41,14 +47,42 @@ def transform_price(
     
     변환:
     {
-      "current": { "value": "35741", "currency": "KRW" },
-      "original": { "value": "51144", "currency": "KRW" } 또는 null,
+      "current": { "value": 35741.0, "currency": "KRW" },  # value는 Number 타입
+      "original": { "value": 51144.0, "currency": "KRW" } 또는 null,  # value는 Number 타입
       "discount_rate": 30.0 또는 null (double 타입)
     }
     """
+    # current price 변환 (value를 숫자로 변환)
+    current_price = None
+    if price:
+        current_price = price.copy()
+        if "value" in current_price:
+            try:
+                # 문자열인 경우 숫자로 변환
+                if isinstance(current_price["value"], str):
+                    current_price["value"] = float(current_price["value"])
+                elif isinstance(current_price["value"], (int, float)):
+                    current_price["value"] = float(current_price["value"])
+            except (ValueError, TypeError):
+                pass
+    
+    # original price 변환 (value를 숫자로 변환)
+    original_price_converted = None
+    if original_price:
+        original_price_converted = original_price.copy()
+        if "value" in original_price_converted:
+            try:
+                # 문자열인 경우 숫자로 변환
+                if isinstance(original_price_converted["value"], str):
+                    original_price_converted["value"] = float(original_price_converted["value"])
+                elif isinstance(original_price_converted["value"], (int, float)):
+                    original_price_converted["value"] = float(original_price_converted["value"])
+            except (ValueError, TypeError):
+                pass
+    
     result: dict[str, Any] = {
-        "current": price if price else None,
-        "original": original_price if original_price else None,
+        "current": current_price,
+        "original": original_price_converted,
         "discount_rate": None,
     }
     
@@ -62,10 +96,10 @@ def transform_price(
             pass
     
     # discount가 없고 original_price와 price가 모두 있으면 계산
-    if not result["discount_rate"] and original_price and price:
+    if not result["discount_rate"] and original_price_converted and current_price:
         try:
-            original_val = float(original_price.get("value", 0))
-            current_val = float(price.get("value", 0))
+            original_val = float(original_price_converted.get("value", 0))
+            current_val = float(current_price.get("value", 0))
             if original_val > current_val and original_val > 0:
                 discount_rate = ((original_val - current_val) / original_val) * 100
                 result["discount_rate"] = float(discount_rate) if discount_rate > 0 else None
@@ -114,7 +148,7 @@ def transform_amazon_item(item: dict[str, Any]) -> dict[str, Any]:
         "category": transform_category(item.get("category")),  # 선택 (array)
         "image": image_url,  # 선택 (string)
         "itemWebUrl": item.get("itemWebUrl"),  # 필수 필드
-        "crawl_date": datetime.utcnow(),  # 선택 (date)
+        "crawl_date": get_kst_now(),  # 선택 (date) - KST 기준
         "platform": "amazon",  # enum: ["amazon"]
     }
     
@@ -222,8 +256,27 @@ async def crawl_amazon_for_customer(
                 logger.debug("No items found for keyword", keyword=keyword)
                 continue
             
-            # Step 3: 각 아이템 변환 및 저장
+            # price.value가 null인 항목 필터링
+            filtered_items = []
             for item in items:
+                price = item.get("price")
+                # price가 존재하고 value가 null이 아닌 경우만 포함
+                if price and price.get("value") is not None:
+                    filtered_items.append(item)
+                else:
+                    logger.debug(
+                        "Item filtered out (price.value is null)",
+                        keyword=keyword,
+                        item_id=item.get("itemId"),
+                        title=item.get("title")
+                    )
+            
+            if not filtered_items:
+                logger.debug("No items with valid price found for keyword", keyword=keyword)
+                continue
+            
+            # Step 3: 각 아이템 변환 및 저장
+            for item in filtered_items:
                 try:
                     # 데이터 가공
                     transformed_item = transform_amazon_item(item)
